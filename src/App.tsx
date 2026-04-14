@@ -17,16 +17,16 @@ interface FileNode {
 function App() {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
-  
+
   // Storage for File System Access API
   const [dirHandle, setDirHandle] = useState<any>(null);
   const [isAutoRefresh, setIsAutoRefresh] = useState<boolean>(false);
-  
+
   // We keep the input fallback just in case
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const markdownFiles = useMemo(() => files.filter(f => f.type === 'md'), [files]);
-  
+
   const assetMap = useMemo(() => {
     const map = new Map<string, string>();
     files.forEach(f => {
@@ -43,11 +43,11 @@ function App() {
     for await (const entry of dirHandle.values()) {
       const path = currentPath ? `${currentPath}/${entry.name}` : entry.name;
       const lowerName = entry.name.toLowerCase();
-      
+
       if (entry.kind === 'file') {
         const fileHandle = entry;
         const file = await fileHandle.getFile();
-        
+
         if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
           const text = await file.text();
           newFiles.push({ path, name: entry.name, content: text, type: 'md', handle: fileHandle });
@@ -71,9 +71,9 @@ function App() {
 
     const newFiles = await scanDirectoryHandle(handle);
     newFiles.sort((a, b) => a.path.localeCompare(b.path));
-    
+
     setFiles(newFiles);
-    
+
     // Restore selected file OR auto-select first
     setSelectedFile(prev => {
       if (prev) {
@@ -120,12 +120,12 @@ function App() {
 
     const newFiles: FileNode[] = [];
     const fileRefs: Record<string, File> = {}; // for manual re-reads if needed
-    
+
     const promises = Array.from(fileList).map(async (file) => {
       const path = file.webkitRelativePath || file.name;
       const lowerName = file.name.toLowerCase();
       fileRefs[path] = file;
-      
+
       if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
         const text = await file.text();
         // Pack the raw File as a pseudo-handle for fallback refresh
@@ -140,7 +140,7 @@ function App() {
 
     newFiles.sort((a, b) => a.path.localeCompare(b.path));
     setFiles(newFiles);
-    
+
     const firstMd = newFiles.find(f => f.type === 'md');
     setSelectedFile(firstMd || null);
     setDirHandle(null); // Explicitly denote we aren't using dir handle
@@ -149,7 +149,7 @@ function App() {
   // Auto Refresh Hook
   useEffect(() => {
     if (!isAutoRefresh) return;
-    
+
     const interval = setInterval(() => {
       handleManualRefresh();
     }, 2000); // 2 second interval
@@ -159,17 +159,17 @@ function App() {
 
   const components = {
     img: ({ node, ...props }: any) => {
-       if (!selectedFile) return <img {...props} />;
-       
-       const src = props.src;
-       if (!src || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
-         return <img {...props} />;
-       }
+      if (!selectedFile) return <img {...props} />;
 
-       const resolvedPath = resolvePath(selectedFile.path, src);
-       const assetUrl = assetMap.get(resolvedPath);
+      const src = props.src;
+      if (!src || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
+        return <img {...props} />;
+      }
 
-       return <img {...props} src={assetUrl || src} alt={props.alt || ''} title={props.title || resolvedPath} />;
+      const resolvedPath = resolvePath(selectedFile.path, src);
+      const assetUrl = assetMap.get(resolvedPath);
+
+      return <img {...props} src={assetUrl || src} alt={props.alt || ''} title={props.title || resolvedPath} />;
     }
   };
 
@@ -190,7 +190,7 @@ function App() {
           <span className="sidebar-header-title">MD Preview</span>
         </div>
 
-        <button 
+        <button
           className="open-folder-btn"
           onClick={handleOpenFolderNative}
           style={{ marginBottom: '8px' }}
@@ -201,28 +201,28 @@ function App() {
 
         {/* Toolbar for Refresh */}
         <div style={{ display: 'flex', gap: '8px', padding: '0 16px 12px', borderBottom: '1px solid var(--border-color)', marginBottom: '8px' }}>
-            <button 
-                onClick={handleManualRefresh}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', padding: '6px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
-                title="Refresh Files"
-                disabled={!selectedFile && !dirHandle}
-            >
-                <RefreshCw size={14} /> Refresh
-            </button>
-            <button 
-                onClick={() => setIsAutoRefresh(!isAutoRefresh)}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: isAutoRefresh ? 'var(--accent-color)' : 'var(--text-secondary)', padding: '6px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
-                title="Auto Refresh (2s)"
-                disabled={!selectedFile && !dirHandle}
-            >
-                {isAutoRefresh ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} Auto
-            </button>
+          <button
+            onClick={handleManualRefresh}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', padding: '6px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+            title="Refresh Files"
+            disabled={!selectedFile && !dirHandle}
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <button
+            onClick={() => setIsAutoRefresh(!isAutoRefresh)}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: isAutoRefresh ? 'var(--accent-color)' : 'var(--text-secondary)', padding: '6px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+            title="Auto Refresh (2s)"
+            disabled={!selectedFile && !dirHandle}
+          >
+            {isAutoRefresh ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} Auto
+          </button>
         </div>
 
         <div className="file-tree-container">
           {markdownFiles.map(file => (
-            <div 
-              key={file.path} 
+            <div
+              key={file.path}
               className={`file-item ${selectedFile?.path === file.path ? 'active' : ''}`}
               onClick={() => setSelectedFile(file)}
               title={file.path}
@@ -246,7 +246,7 @@ function App() {
                   <FileText size={18} />
                   {selectedFile.path}
                 </span>
-                
+
                 {isAutoRefresh && (
                   <span style={{ fontSize: '11px', background: 'var(--accent-glow)', color: 'var(--accent-color)', padding: '4px 8px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <RefreshCw size={12} className="spin-anim" /> Live
@@ -256,7 +256,7 @@ function App() {
             </div>
             <div className="preview-container">
               <div className="markdown-body">
-                <ReactMarkdown 
+                <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={components}
                 >
