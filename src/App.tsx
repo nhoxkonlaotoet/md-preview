@@ -1,7 +1,10 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { FolderOpen, FileText, LayoutTemplate, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react';
+import { 
+  FolderOpen, FileText, LayoutTemplate, RefreshCw, 
+  ToggleLeft, ToggleRight, List, FolderTree, ChevronRight, ChevronDown, Folder as FolderIcon 
+} from 'lucide-react';
 import { resolvePath } from './utils/path';
 import './App.css';
 
@@ -14,10 +17,61 @@ interface FileNode {
   handle?: any; // FileSystemFileHandle if available
 }
 
+interface TreeNode {
+  name: string;
+  path: string;
+  type: 'folder' | 'file';
+  file?: FileNode;
+  children?: TreeNode[];
+}
+
+const TreeNodeItem = ({ node, level, selectedFile, onSelect }: { node: TreeNode, level: number, selectedFile: FileNode | null, onSelect: (file: FileNode) => void }) => {
+  const [expanded, setExpanded] = useState(true);
+  
+  if (node.type === 'file') {
+    return (
+      <div 
+        className={`file-item ${selectedFile?.path === node.file?.path ? 'active' : ''}`}
+        style={{ paddingLeft: `${(level * 16) + 12}px` }}
+        onClick={() => node.file && onSelect(node.file)}
+        title={node.path}
+      >
+        <FileText className="file-icon" size={16} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.name}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div 
+        className="file-item"
+        style={{ paddingLeft: `${(level * 16) + 8}px`, color: 'var(--text-primary)', fontWeight: 500 }}
+        onClick={() => setExpanded(!expanded)}
+        title={node.path}
+      >
+        {expanded ? <ChevronDown size={16} className="file-icon" /> : <ChevronRight size={16} className="file-icon" />}
+        <FolderIcon size={16} style={{ color: 'var(--accent-color)', opacity: 0.9, flexShrink: 0, marginRight: '4px' }} fill="currentColor" fillOpacity={0.2} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.name}</span>
+      </div>
+      {expanded && node.children?.map(child => (
+        <TreeNodeItem 
+          key={child.path} 
+          node={child} 
+          level={level + 1} 
+          selectedFile={selectedFile}
+          onSelect={onSelect}
+        />
+      ))}
+    </div>
+  );
+};
+
 function App() {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
-
+  const [viewMode, setViewMode] = useState<'flat' | 'tree'>('tree');
+  
   // Storage for File System Access API
   const [dirHandle, setDirHandle] = useState<any>(null);
   const [isAutoRefresh, setIsAutoRefresh] = useState<boolean>(false);
@@ -26,6 +80,41 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const markdownFiles = useMemo(() => files.filter(f => f.type === 'md'), [files]);
+  
+  // Build Tree Structure
+  const fileTree = useMemo(() => {
+    const root: TreeNode[] = [];
+    
+    markdownFiles.forEach(file => {
+      const parts = file.path.split('/');
+      let currentLevel = root;
+      let currentPath = '';
+
+      parts.forEach((part, index) => {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        const isFile = index === parts.length - 1;
+
+        let existingNode = currentLevel.find(n => n.name === part && n.type === (isFile ? 'file' : 'folder'));
+
+        if (!existingNode) {
+          existingNode = {
+            name: part,
+            path: currentPath,
+            type: isFile ? 'file' : 'folder',
+            file: isFile ? file : undefined,
+            children: isFile ? undefined : []
+          };
+          currentLevel.push(existingNode);
+        }
+
+        if (!isFile) {
+          currentLevel = existingNode.children!;
+        }
+      });
+    });
+    
+    return root;
+  }, [markdownFiles]);
 
   const assetMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -200,7 +289,7 @@ function App() {
         </button>
 
         {/* Toolbar for Refresh */}
-        <div style={{ display: 'flex', gap: '8px', padding: '0 16px 12px', borderBottom: '1px solid var(--border-color)', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', padding: '0 16px 12px', borderBottom: '1px solid var(--border-color)', marginBottom: '4px' }}>
           <button
             onClick={handleManualRefresh}
             style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', padding: '6px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
@@ -218,22 +307,55 @@ function App() {
             {isAutoRefresh ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} Auto
           </button>
         </div>
-
-        <div className="file-tree-container">
-          {markdownFiles.map(file => (
-            <div
-              key={file.path}
-              className={`file-item ${selectedFile?.path === file.path ? 'active' : ''}`}
-              onClick={() => setSelectedFile(file)}
-              title={file.path}
+        
+        {/* View Mode Toggle */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 16px', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.1)' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Files</span>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              onClick={() => setViewMode('tree')}
+              style={{ background: viewMode === 'tree' ? 'var(--accent-glow)' : 'transparent', color: viewMode === 'tree' ? 'var(--accent-color)' : 'var(--text-tertiary)', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+              title="Tree View"
             >
-              <FileText className="file-icon" size={16} />
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span>{file.name}</span>
-                <span style={{ fontSize: '11px', opacity: 0.6 }}>{file.path.split('/').slice(0, -1).join('/') || '/'}</span>
+              <FolderTree size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode('flat')}
+              style={{ background: viewMode === 'flat' ? 'var(--accent-glow)' : 'transparent', color: viewMode === 'flat' ? 'var(--accent-color)' : 'var(--text-tertiary)', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+              title="Flat List View"
+            >
+              <List size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="file-tree-container" style={{ padding: '8px' }}>
+          {viewMode === 'tree' ? (
+             fileTree.map(node => (
+               <TreeNodeItem 
+                 key={node.path} 
+                 node={node} 
+                 level={0} 
+                 selectedFile={selectedFile} 
+                 onSelect={setSelectedFile} 
+               />
+             ))
+          ) : (
+            markdownFiles.map(file => (
+              <div
+                key={file.path}
+                className={`file-item ${selectedFile?.path === file.path ? 'active' : ''}`}
+                onClick={() => setSelectedFile(file)}
+                title={file.path}
+              >
+                <FileText className="file-icon" size={16} />
+                <div style={{ display: 'flex', flexDirection: 'column', width: '100%', overflow: 'hidden' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</span>
+                  <span style={{ fontSize: '11px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.path.split('/').slice(0, -1).join('/') || '/'}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </aside>
 
