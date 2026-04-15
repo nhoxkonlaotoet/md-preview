@@ -324,3 +324,86 @@
 .spin-anim {
   animation: spin 3s linear infinite;
 }
+
+/* Mermaid Styles */
+.mmd-icon {
+  color: #22d3ee !important;
+  opacity: 1 !important;
+}
+
+.file-type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mmd-badge {
+  background: rgba(34, 211, 238, 0.15);
+  color: #22d3ee;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+}
+
+.mermaid-body {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.mermaid-preview {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+
+.mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 24px rgba(99, 102, 241, 0.15));
+}
+
+.mermaid-error {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.mermaid-error-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f87171;
+  margin-bottom: 16px;
+}
+
+.mermaid-error-detail {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  color: #fca5a5;
+  font-size: 13px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-family: 'Fira Code', monospace;
+}
+
+.mermaid-source {
+  background: var(--markdown-code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-family: 'Fira Code', monospace;
+}
+

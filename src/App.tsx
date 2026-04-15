@@ -1,19 +1,35 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import mermaid from 'mermaid';
 import { 
   FolderOpen, FileText, LayoutTemplate, RefreshCw, 
-  ToggleLeft, ToggleRight, List, FolderTree, ChevronRight, ChevronDown, Folder as FolderIcon 
+  ToggleLeft, ToggleRight, List, FolderTree, ChevronRight, ChevronDown, Folder as FolderIcon, GitBranch 
 } from 'lucide-react';
 import { resolvePath } from './utils/path';
 import './App.css';
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    darkMode: true,
+    background: '#111318',
+    primaryColor: '#6366f1',
+    primaryTextColor: '#e0e0e0',
+    primaryBorderColor: '#4f46e5',
+    lineColor: '#6366f1',
+    secondaryColor: '#1e1e2e',
+    tertiaryColor: '#2a2a3e',
+  },
+});
 
 interface FileNode {
   path: string;
   name: string;
   content?: string;
   url?: string;
-  type: 'md' | 'image' | 'other';
+  type: 'md' | 'mmd' | 'image' | 'other';
   handle?: any; // FileSystemFileHandle if available
 }
 
@@ -24,6 +40,59 @@ interface TreeNode {
   file?: FileNode;
   children?: TreeNode[];
 }
+
+const FileIcon = ({ type }: { type: string }) => {
+  if (type === 'mmd') return <GitBranch className="file-icon mmd-icon" size={16} />;
+  return <FileText className="file-icon" size={16} />;
+};
+
+const MermaidPreview = ({ content }: { content: string }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const render = async () => {
+      try {
+        const id = `mermaid-${Date.now()}`;
+        const { svg: renderedSvg } = await mermaid.render(id, content);
+        if (!cancelled) {
+          setSvg(renderedSvg);
+          setError(null);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || 'Failed to render Mermaid diagram');
+          setSvg('');
+        }
+        // Clean up any leftover error container mermaid might create
+        const errEl = document.getElementById('d' + 'mermaid-error');
+        if (errEl) errEl.remove();
+      }
+    };
+    render();
+    return () => { cancelled = true; };
+  }, [content]);
+
+  if (error) {
+    return (
+      <div className="mermaid-error">
+        <div className="mermaid-error-title">⚠️ Mermaid Syntax Error</div>
+        <pre className="mermaid-error-detail">{error}</pre>
+        <pre className="mermaid-source">{content}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="mermaid-preview"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+};
 
 const TreeNodeItem = ({ node, level, selectedFile, onSelect }: { node: TreeNode, level: number, selectedFile: FileNode | null, onSelect: (file: FileNode) => void }) => {
   const [expanded, setExpanded] = useState(true);
@@ -36,7 +105,7 @@ const TreeNodeItem = ({ node, level, selectedFile, onSelect }: { node: TreeNode,
         onClick={() => node.file && onSelect(node.file)}
         title={node.path}
       >
-        <FileText className="file-icon" size={16} />
+        <FileIcon type={node.file?.type || 'md'} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.name}</span>
       </div>
     );
@@ -79,13 +148,13 @@ function App() {
   // We keep the input fallback just in case
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const markdownFiles = useMemo(() => files.filter(f => f.type === 'md'), [files]);
+  const previewableFiles = useMemo(() => files.filter(f => f.type === 'md' || f.type === 'mmd'), [files]);
   
   // Build Tree Structure
   const fileTree = useMemo(() => {
     const root: TreeNode[] = [];
     
-    markdownFiles.forEach(file => {
+    previewableFiles.forEach(file => {
       const parts = file.path.split('/');
       let currentLevel = root;
       let currentPath = '';
@@ -114,7 +183,7 @@ function App() {
     });
     
     return root;
-  }, [markdownFiles]);
+  }, [previewableFiles]);
 
   const assetMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -140,6 +209,9 @@ function App() {
         if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
           const text = await file.text();
           newFiles.push({ path, name: entry.name, content: text, type: 'md', handle: fileHandle });
+        } else if (lowerName.endsWith('.mmd')) {
+          const text = await file.text();
+          newFiles.push({ path, name: entry.name, content: text, type: 'mmd', handle: fileHandle });
         } else if (lowerName.match(/\.(png|jpg|jpeg|gif|svg|webp)$/)) {
           const url = URL.createObjectURL(file);
           newFiles.push({ path, name: entry.name, url, type: 'image', handle: fileHandle });
@@ -169,7 +241,7 @@ function App() {
         const matching = newFiles.find(f => f.path === prev.path);
         if (matching) return matching;
       }
-      return newFiles.find(f => f.type === 'md') || null;
+      return newFiles.find(f => f.type === 'md' || f.type === 'mmd') || null;
     });
   };
 
@@ -219,6 +291,9 @@ function App() {
         const text = await file.text();
         // Pack the raw File as a pseudo-handle for fallback refresh
         newFiles.push({ path, name: file.name, content: text, type: 'md', handle: { getFile: async () => fileRefs[path] } });
+      } else if (lowerName.endsWith('.mmd')) {
+        const text = await file.text();
+        newFiles.push({ path, name: file.name, content: text, type: 'mmd', handle: { getFile: async () => fileRefs[path] } });
       } else if (lowerName.match(/\.(png|jpg|jpeg|gif|svg|webp)$/)) {
         const url = URL.createObjectURL(file);
         newFiles.push({ path, name: file.name, url, type: 'image' });
@@ -230,8 +305,8 @@ function App() {
     newFiles.sort((a, b) => a.path.localeCompare(b.path));
     setFiles(newFiles);
 
-    const firstMd = newFiles.find(f => f.type === 'md');
-    setSelectedFile(firstMd || null);
+    const firstPreviewable = newFiles.find(f => f.type === 'md' || f.type === 'mmd');
+    setSelectedFile(firstPreviewable || null);
     setDirHandle(null); // Explicitly denote we aren't using dir handle
   };
 
@@ -341,14 +416,14 @@ function App() {
                />
              ))
           ) : (
-            markdownFiles.map(file => (
+            previewableFiles.map(file => (
               <div
                 key={file.path}
                 className={`file-item ${selectedFile?.path === file.path ? 'active' : ''}`}
                 onClick={() => setSelectedFile(file)}
                 title={file.path}
               >
-                <FileText className="file-icon" size={16} />
+                <FileIcon type={file.type} />
                 <div style={{ display: 'flex', flexDirection: 'column', width: '100%', overflow: 'hidden' }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</span>
                   <span style={{ fontSize: '11px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.path.split('/').slice(0, -1).join('/') || '/'}</span>
@@ -365,8 +440,11 @@ function App() {
             <div className="top-bar">
               <span className="top-bar-title" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText size={18} />
+                  {selectedFile.type === 'mmd' ? <GitBranch size={18} /> : <FileText size={18} />}
                   {selectedFile.path}
+                  {selectedFile.type === 'mmd' && (
+                    <span className="file-type-badge mmd-badge">MERMAID</span>
+                  )}
                 </span>
 
                 {isAutoRefresh && (
@@ -377,14 +455,20 @@ function App() {
               </span>
             </div>
             <div className="preview-container">
-              <div className="markdown-body">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={components}
-                >
-                  {selectedFile.content || ''}
-                </ReactMarkdown>
-              </div>
+              {selectedFile.type === 'mmd' ? (
+                <div className="mermaid-body">
+                  <MermaidPreview content={selectedFile.content || ''} />
+                </div>
+              ) : (
+                <div className="markdown-body">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={components}
+                  >
+                    {selectedFile.content || ''}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
           </>
         ) : (
