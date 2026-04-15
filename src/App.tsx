@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
 import { 
   FolderOpen, FileText, LayoutTemplate, RefreshCw, 
-  ToggleLeft, ToggleRight, List, FolderTree, ChevronRight, ChevronDown, Folder as FolderIcon, GitBranch, Braces 
+  ToggleLeft, ToggleRight, List, FolderTree, ChevronRight, ChevronDown, Folder as FolderIcon, GitBranch, Braces, Download
 } from 'lucide-react';
 import { resolvePath } from './utils/path';
 import './App.css';
@@ -139,8 +139,7 @@ const JsonPreview = ({ content }: { content: string }) => {
   );
 };
 
-const MermaidPreview = ({ content }: { content: string }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+const MermaidPreview = ({ content, onSvgChange }: { content: string; onSvgChange?: (svg: string) => void }) => {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -152,14 +151,15 @@ const MermaidPreview = ({ content }: { content: string }) => {
         const { svg: renderedSvg } = await mermaid.render(id, content);
         if (!cancelled) {
           setSvg(renderedSvg);
+          onSvgChange?.(renderedSvg);
           setError(null);
         }
       } catch (err: any) {
         if (!cancelled) {
           setError(err?.message || 'Failed to render Mermaid diagram');
           setSvg('');
+          onSvgChange?.('');
         }
-        // Clean up any leftover error container mermaid might create
         const errEl = document.getElementById('d' + 'mermaid-error');
         if (errEl) errEl.remove();
       }
@@ -179,11 +179,12 @@ const MermaidPreview = ({ content }: { content: string }) => {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="mermaid-preview"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <div style={{ width: '100%' }}>
+      <div
+        className="mermaid-preview"
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    </div>
   );
 };
 
@@ -237,6 +238,68 @@ function App() {
   // Storage for File System Access API
   const [dirHandle, setDirHandle] = useState<any>(null);
   const [isAutoRefresh, setIsAutoRefresh] = useState<boolean>(false);
+
+  // Mermaid PNG export
+  const [mermaidSvg, setMermaidSvg] = useState<string>('');
+  const [isSavingPng, setIsSavingPng] = useState(false);
+
+  const handleSavePng = async () => {
+    if (!mermaidSvg || !selectedFile) return;
+    setIsSavingPng(true);
+    try {
+      // Parse SVG to extract exact viewBox dimensions
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(mermaidSvg, 'image/svg+xml');
+      const svgEl = doc.querySelector('svg');
+      if (!svgEl) return;
+
+      let w = 800, h = 600;
+      const vb = svgEl.getAttribute('viewBox');
+      if (vb) {
+        const parts = vb.trim().split(/[\s,]+/).map(Number);
+        if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
+          w = parts[2]; h = parts[3];
+        }
+      } else {
+        const wa = svgEl.getAttribute('width');
+        const ha = svgEl.getAttribute('height');
+        if (wa && !wa.includes('%')) w = parseFloat(wa);
+        if (ha && !ha.includes('%')) h = parseFloat(ha);
+      }
+
+      // Force explicit px dimensions so the browser renders it at full size
+      svgEl.setAttribute('width', String(w));
+      svgEl.setAttribute('height', String(h));
+
+      const svgStr = new XMLSerializer().serializeToString(svgEl);
+      const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      const scale = 3; // 3× for crisp high-res output
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext('2d')!;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = '#111318';
+      ctx.fillRect(0, 0, w, h);
+
+      await new Promise<void>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => { ctx.drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url); resolve(); };
+        img.onerror = reject;
+        img.src = url;
+      });
+
+      const pngUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = pngUrl;
+      a.download = selectedFile.name.replace(/\.mmd$/i, '') + '.png';
+      a.click();
+    } finally {
+      setIsSavingPng(false);
+    }
+  };
 
   // We keep the input fallback just in case
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -549,17 +612,37 @@ function App() {
                   )}
                 </span>
 
-                {isAutoRefresh && (
-                  <span style={{ fontSize: '11px', background: 'var(--accent-glow)', color: 'var(--accent-color)', padding: '4px 8px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <RefreshCw size={12} className="spin-anim" /> Live
-                  </span>
-                )}
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isAutoRefresh && (
+                    <span style={{ fontSize: '11px', background: 'var(--accent-glow)', color: 'var(--accent-color)', padding: '4px 8px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <RefreshCw size={12} className="spin-anim" /> Live
+                    </span>
+                  )}
+                  {selectedFile.type === 'mmd' && mermaidSvg && (
+                    <button
+                      onClick={handleSavePng}
+                      disabled={isSavingPng}
+                      title="Save as PNG"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)',
+                        color: isSavingPng ? 'var(--text-tertiary)' : 'var(--accent-color)',
+                        padding: '5px 12px', borderRadius: '8px',
+                        cursor: isSavingPng ? 'not-allowed' : 'pointer',
+                        fontSize: '12px', fontWeight: 600, transition: 'all 0.2s',
+                      }}
+                    >
+                      <Download size={13} />
+                      {isSavingPng ? 'Saving…' : 'Save PNG'}
+                    </button>
+                  )}
+                </span>
               </span>
             </div>
             <div className="preview-container">
               {selectedFile.type === 'mmd' ? (
                 <div className="mermaid-body">
-                  <MermaidPreview content={selectedFile.content || ''} />
+                  <MermaidPreview content={selectedFile.content || ''} onSvgChange={setMermaidSvg} />
                 </div>
               ) : selectedFile.type === 'json' ? (
                 <div className="json-body">
