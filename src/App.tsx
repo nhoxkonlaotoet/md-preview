@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
 import { 
   FolderOpen, FileText, LayoutTemplate, RefreshCw, 
-  ToggleLeft, ToggleRight, List, FolderTree, ChevronRight, ChevronDown, Folder as FolderIcon, GitBranch 
+  ToggleLeft, ToggleRight, List, FolderTree, ChevronRight, ChevronDown, Folder as FolderIcon, GitBranch, Braces 
 } from 'lucide-react';
 import { resolvePath } from './utils/path';
 import './App.css';
@@ -29,7 +29,7 @@ interface FileNode {
   name: string;
   content?: string;
   url?: string;
-  type: 'md' | 'mmd' | 'image' | 'other';
+  type: 'md' | 'mmd' | 'json' | 'image' | 'other';
   handle?: any; // FileSystemFileHandle if available
 }
 
@@ -43,7 +43,100 @@ interface TreeNode {
 
 const FileIcon = ({ type }: { type: string }) => {
   if (type === 'mmd') return <GitBranch className="file-icon mmd-icon" size={16} />;
+  if (type === 'json') return <Braces className="file-icon json-icon" size={16} />;
   return <FileText className="file-icon" size={16} />;
+};
+
+// --- JSON Preview ---
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+const JsonNode = ({ value, depth = 0, isLast = true }: { value: JsonValue; depth?: number; isLast?: boolean }) => {
+  const [collapsed, setCollapsed] = useState(depth > 2);
+
+  if (value === null) return <span className="json-null">null</span>;
+  if (typeof value === 'boolean') return <span className="json-bool">{value.toString()}</span>;
+  if (typeof value === 'number') return <span className="json-number">{value}</span>;
+  if (typeof value === 'string') return <span className="json-string">&quot;{value}&quot;</span>;
+
+  const isArray = Array.isArray(value);
+  const entries = isArray
+    ? (value as JsonValue[]).map((v, i) => [String(i), v] as [string, JsonValue])
+    : Object.entries(value as { [key: string]: JsonValue });
+
+  if (entries.length === 0) {
+    return <span className="json-bracket">{isArray ? '[]' : '{}'}</span>;
+  }
+
+  const openBr = isArray ? '[' : '{';
+  const closeBr = isArray ? ']' : '}';
+
+  return (
+    <span>
+      <span
+        className="json-toggle"
+        onClick={() => setCollapsed(c => !c)}
+        title={collapsed ? 'Expand' : 'Collapse'}
+      >
+        <span className="json-toggle-icon">{collapsed ? '▶' : '▼'}</span>
+        <span className="json-bracket">{openBr}</span>
+      </span>
+      {collapsed ? (
+        <span>
+          <span className="json-collapsed-hint" onClick={() => setCollapsed(false)}>
+            {entries.length} {isArray ? 'item' : 'key'}{entries.length !== 1 ? 's' : ''}
+          </span>
+          <span className="json-bracket">{closeBr}</span>
+        </span>
+      ) : (
+        <span>
+          <span className="json-block">
+            {entries.map(([key, val], idx) => (
+              <span key={key} className="json-entry">
+                <span className="json-indent" style={{ paddingLeft: `${(depth + 1) * 20}px` }} />
+                {!isArray && <><span className="json-key">&quot;{key}&quot;</span><span className="json-colon">: </span></>}
+                <JsonNode value={val} depth={depth + 1} isLast={idx === entries.length - 1} />
+                {idx < entries.length - 1 && <span className="json-comma">,</span>}
+                {"\n"}
+              </span>
+            ))}
+          </span>
+          <span className="json-indent" style={{ paddingLeft: `${depth * 20}px` }} />
+          <span className="json-bracket">{closeBr}</span>
+        </span>
+      )}
+    </span>
+  );
+};
+
+const JsonPreview = ({ content }: { content: string }) => {
+  const [parsed, setParsed] = useState<{ data: JsonValue | null; error: string | null }>({ data: null, error: null });
+
+  useEffect(() => {
+    try {
+      const data = JSON.parse(content);
+      setParsed({ data, error: null });
+    } catch (e: any) {
+      setParsed({ data: null, error: e.message });
+    }
+  }, [content]);
+
+  if (parsed.error) {
+    return (
+      <div className="mermaid-error">
+        <div className="mermaid-error-title">⚠️ JSON Parse Error</div>
+        <pre className="mermaid-error-detail">{parsed.error}</pre>
+        <pre className="mermaid-source">{content}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div className="json-preview">
+      <pre className="json-pre">
+        <JsonNode value={parsed.data} depth={0} />
+      </pre>
+    </div>
+  );
 };
 
 const MermaidPreview = ({ content }: { content: string }) => {
@@ -148,7 +241,7 @@ function App() {
   // We keep the input fallback just in case
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const previewableFiles = useMemo(() => files.filter(f => f.type === 'md' || f.type === 'mmd'), [files]);
+  const previewableFiles = useMemo(() => files.filter(f => f.type === 'md' || f.type === 'mmd' || f.type === 'json'), [files]);
   
   // Build Tree Structure
   const fileTree = useMemo(() => {
@@ -212,6 +305,9 @@ function App() {
         } else if (lowerName.endsWith('.mmd')) {
           const text = await file.text();
           newFiles.push({ path, name: entry.name, content: text, type: 'mmd', handle: fileHandle });
+        } else if (lowerName.endsWith('.json')) {
+          const text = await file.text();
+          newFiles.push({ path, name: entry.name, content: text, type: 'json', handle: fileHandle });
         } else if (lowerName.match(/\.(png|jpg|jpeg|gif|svg|webp)$/)) {
           const url = URL.createObjectURL(file);
           newFiles.push({ path, name: entry.name, url, type: 'image', handle: fileHandle });
@@ -241,7 +337,7 @@ function App() {
         const matching = newFiles.find(f => f.path === prev.path);
         if (matching) return matching;
       }
-      return newFiles.find(f => f.type === 'md' || f.type === 'mmd') || null;
+      return newFiles.find(f => f.type === 'md' || f.type === 'mmd' || f.type === 'json') || null;
     });
   };
 
@@ -294,6 +390,9 @@ function App() {
       } else if (lowerName.endsWith('.mmd')) {
         const text = await file.text();
         newFiles.push({ path, name: file.name, content: text, type: 'mmd', handle: { getFile: async () => fileRefs[path] } });
+      } else if (lowerName.endsWith('.json')) {
+        const text = await file.text();
+        newFiles.push({ path, name: file.name, content: text, type: 'json', handle: { getFile: async () => fileRefs[path] } });
       } else if (lowerName.match(/\.(png|jpg|jpeg|gif|svg|webp)$/)) {
         const url = URL.createObjectURL(file);
         newFiles.push({ path, name: file.name, url, type: 'image' });
@@ -305,7 +404,7 @@ function App() {
     newFiles.sort((a, b) => a.path.localeCompare(b.path));
     setFiles(newFiles);
 
-    const firstPreviewable = newFiles.find(f => f.type === 'md' || f.type === 'mmd');
+    const firstPreviewable = newFiles.find(f => f.type === 'md' || f.type === 'mmd' || f.type === 'json');
     setSelectedFile(firstPreviewable || null);
     setDirHandle(null); // Explicitly denote we aren't using dir handle
   };
@@ -440,10 +539,13 @@ function App() {
             <div className="top-bar">
               <span className="top-bar-title" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {selectedFile.type === 'mmd' ? <GitBranch size={18} /> : <FileText size={18} />}
+                  {selectedFile.type === 'mmd' ? <GitBranch size={18} /> : selectedFile.type === 'json' ? <Braces size={18} /> : <FileText size={18} />}
                   {selectedFile.path}
                   {selectedFile.type === 'mmd' && (
                     <span className="file-type-badge mmd-badge">MERMAID</span>
+                  )}
+                  {selectedFile.type === 'json' && (
+                    <span className="file-type-badge json-badge">JSON</span>
                   )}
                 </span>
 
@@ -458,6 +560,10 @@ function App() {
               {selectedFile.type === 'mmd' ? (
                 <div className="mermaid-body">
                   <MermaidPreview content={selectedFile.content || ''} />
+                </div>
+              ) : selectedFile.type === 'json' ? (
+                <div className="json-body">
+                  <JsonPreview content={selectedFile.content || ''} />
                 </div>
               ) : (
                 <div className="markdown-body">
