@@ -50,7 +50,7 @@ const FileIcon = ({ type }: { type: string }) => {
 // --- JSON Preview ---
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-const JsonNode = ({ value, depth = 0, isLast = true }: { value: JsonValue; depth?: number; isLast?: boolean }) => {
+const JsonNode = ({ value, depth = 0 }: { value: JsonValue; depth?: number }) => {
   const [collapsed, setCollapsed] = useState(depth > 2);
 
   if (value === null) return <span className="json-null">null</span>;
